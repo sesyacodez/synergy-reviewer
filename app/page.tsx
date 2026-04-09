@@ -53,7 +53,7 @@ export default function Home() {
           />
           <Card
             title="Portable"
-            description="No vendor lock-in. Runs on any platform with Claude, GPT-4, and Gemini API keys."
+            description="One OpenRouter key routes to multiple models — including free `:free` endpoints for demos."
           />
         </div>
 
@@ -70,7 +70,7 @@ export default function Home() {
         </div>
 
         <p className="mt-12 text-xs text-[var(--muted)]">
-          Powered by AI SDK, Next.js, and multiple LLM providers.
+          Powered by AI SDK, Next.js, and OpenRouter.
         </p>
       </div>
     </main>

@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+
+/** Vercel / Next: allow long-running review after webhook response (requires Pro for >60s). */
+export const maxDuration = 300;
 
 import { assertConfigured } from "@/lib/env";
 import { getAppSlug, getInstallationToken } from "@/lib/github/app";
@@ -72,8 +75,12 @@ export async function POST(request: NextRequest) {
     installationToken: token,
   };
 
-  runOrchestrator(ctx, userInstruction).catch((err) => {
-    console.error("[webhook] orchestrator failed:", err);
+  after(async () => {
+    try {
+      await runOrchestrator(ctx, userInstruction);
+    } catch (err) {
+      console.error("[webhook] orchestrator failed:", err);
+    }
   });
 
   return NextResponse.json({ ok: true, status: "review started" });

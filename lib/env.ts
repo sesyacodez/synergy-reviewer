@@ -3,18 +3,18 @@ import { z } from "zod";
 
 export const env = createEnv({
   server: {
-    ANTHROPIC_API_KEY: z.string().min(1).optional(),
-    OPENAI_API_KEY: z.string().min(1).optional(),
-    GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
+    OPENROUTER_API_KEY: z.string().min(1).optional(),
+    /** Optional; OpenRouter uses this for rankings on https://openrouter.ai */
+    OPENROUTER_HTTP_REFERER: z.string().optional(),
+    /** Comma-separated OpenRouter model IDs (default: three `:free` models). */
+    OPENROUTER_REVIEW_MODELS: z.string().optional(),
+    OPENROUTER_SYNTH_MODEL: z.string().optional(),
 
     GITHUB_APP_ID: z.string().min(1).default(""),
     GITHUB_APP_INSTALLATION_ID: z.coerce.number().int().default(0),
     GITHUB_APP_PRIVATE_KEY: z.string().min(1).default(""),
     GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).default(""),
 
-    SYNTH_MODEL: z
-      .enum(["anthropic", "openai", "google"])
-      .default("anthropic"),
     AGENT_COUNT: z.coerce.number().int().min(1).max(5).default(3),
   },
   experimental__runtimeEnv: {},

@@ -4,7 +4,7 @@ An ensemble AI code review bot. Multiple independent AI agents review your PRs i
 
 ## Why Ensemble Review?
 
-A single AI reviewer can be biased — it may hallucinate issues, miss real problems, or fixate on style over substance. Synergy Reviewer runs **3 independent agents** (Claude, GPT-4, Gemini) against the same PR diff. When multiple models independently flag the same issue, confidence is high. When they disagree, the dispute is surfaced for human judgment.
+A single AI reviewer can be biased — it may hallucinate issues, miss real problems, or fixate on style over substance. Synergy Reviewer runs **3 independent agents** (via [OpenRouter](https://openrouter.ai), using distinct models — defaults use free `:free` endpoints) against the same PR diff. When multiple models independently flag the same issue, confidence is high. When they disagree, the dispute is surfaced for human judgment.
 
 ## How It Works
 
@@ -20,7 +20,7 @@ GitHub PR Comment (@synergy-reviewer)
     ┌───┼───┐
     │   │   │
     ▼   ▼   ▼
-  Claude GPT-4 Gemini   ← 3 independent reviews
+  Model A  B  C         ← 3 independent reviews (OpenRouter)
     │   │   │
     └───┼───┘
         │
@@ -90,17 +90,17 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | At least one | Claude API key |
-| `OPENAI_API_KEY` | At least one | GPT-4 API key |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | At least one | Gemini API key |
+| `OPENROUTER_API_KEY` | Yes | [OpenRouter](https://openrouter.ai) API key (free models: use IDs ending in `:free`) |
+| `OPENROUTER_HTTP_REFERER` | No | Your app URL; recommended by OpenRouter for free-tier attribution |
+| `OPENROUTER_REVIEW_MODELS` | No | Comma-separated OpenRouter model IDs for reviewers. Default: three different free models |
+| `OPENROUTER_SYNTH_MODEL` | No | Model ID for the synthesizer. Default: a larger free instruct model |
 | `GITHUB_APP_ID` | Yes | Your GitHub App ID |
 | `GITHUB_APP_INSTALLATION_ID` | Yes | Installation ID for your repo |
 | `GITHUB_APP_PRIVATE_KEY` | Yes | GitHub App private key (with `\n` for newlines) |
 | `GITHUB_APP_WEBHOOK_SECRET` | Yes | Webhook secret |
-| `SYNTH_MODEL` | No | Which provider for the synthesizer (`anthropic`, `openai`, `google`). Default: `anthropic` |
 | `AGENT_COUNT` | No | Number of parallel agents (1-5). Default: `3` |
 
-You need **at least one** LLM API key. For true ensemble de-biasing, configure all three.
+Browse [free models on OpenRouter](https://openrouter.ai/models?q=free) and set `OPENROUTER_REVIEW_MODELS` / `OPENROUTER_SYNTH_MODEL` if defaults change or rate-limit.
 
 ### 4. Run
 
@@ -150,7 +150,7 @@ synergy-reviewer/
 ## Tech Stack
 
 - **Next.js** — App framework
-- **AI SDK** — Unified multi-model interface (Anthropic, OpenAI, Google)
+- **AI SDK** — OpenAI-compatible client to **OpenRouter** (multi-model, including free tiers)
 - **Octokit** — GitHub API client
 - **Zod** — Schema validation for structured agent outputs
 - **Tailwind CSS** — Landing page styling
