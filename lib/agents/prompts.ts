@@ -60,10 +60,6 @@ export function buildReviewerSystemPrompt(
     "- If you suggest a fix, provide the corrected code snippet",
     "- If the code looks good, return an empty findings array with a positive summary",
     "",
-    "## Tools",
-    "You have access to bash, readFile, and writeFile tools to explore the codebase.",
-    "Use them to understand context around the changed code before making judgments.",
-    "",
     "## Changed Files",
     changedFiles.map((f) => `- ${f}`).join("\n"),
     "",
@@ -82,8 +78,29 @@ export function buildReviewerSystemPrompt(
   parts.push(
     "",
     "## Output",
-    "After reviewing, output your findings as structured data. Use the provided output schema.",
-    "Explore the codebase with the available tools before finalizing your review."
+    "After reviewing, output your findings as a JSON object wrapped in ```json code fences.",
+    "You MUST use exactly this format:",
+    "",
+    "```json",
+    "{",
+    '  "findings": [',
+    "    {",
+    '      "file": "path/to/file.ts",',
+    '      "line": 42,',
+    '      "endLine": 45,',
+    '      "severity": "critical | warning | info",',
+    '      "category": "security | performance | bug | error-handling | race-condition | style | testing | architecture | other",',
+    '      "title": "Short title (max 80 chars)",',
+    '      "description": "Detailed explanation: what is wrong, why it matters, how to fix it",',
+    '      "suggestion": "corrected code snippet (optional)"',
+    "    }",
+    "  ],",
+    '  "summary": "2-4 sentence overall assessment of the PR quality"',
+    "}",
+    "```",
+    "",
+    "IMPORTANT: Output ONLY the JSON block after your analysis. No extra text after the JSON.",
+    "If the code looks good, return an empty findings array with a positive summary."
   );
 
   return parts.join("\n");

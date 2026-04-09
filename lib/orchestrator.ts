@@ -74,14 +74,18 @@ export async function runOrchestrator(
       )
       .map((r) => r.value);
 
-    const failedCount = reviews.filter(
-      (r) => r.status === "rejected"
-    ).length;
+    const failedResults = reviews.filter(
+      (r): r is PromiseRejectedResult => r.status === "rejected"
+    );
+    const failedCount = failedResults.length;
 
     if (failedCount > 0) {
       console.warn(
         `[orchestrator] ${failedCount}/${reviews.length} agents failed`
       );
+      for (const failed of failedResults) {
+        console.error("[orchestrator] agent error:", failed.reason);
+      }
     }
 
     if (completedReviews.length === 0) {

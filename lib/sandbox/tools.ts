@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
@@ -8,11 +8,42 @@ function ensureWithinSandbox(sandboxPath: string, filePath: string): string {
   const resolved = resolve(sandboxPath, filePath);
   const rel = relative(sandboxPath, resolved);
   if (rel.startsWith("..") || resolve(resolved) !== resolved.replace(/[\\/]$/, "")) {
-    if (rel.startsWith("..")) {
-      throw new Error(`Path traversal blocked: ${filePath}`);
-    }
+    throw new Error(`Path traversal blocked: ${filePath}`);
   }
   return resolved;
+}
+
+const ALLOWED_COMMANDS = new Set([
+  "ls", "find", "grep", "rg", "cat", "head", "tail", "wc",
+  "tree", "file", "diff", "sort", "uniq", "sed", "awk",
+  "jq", "npm", "npx", "node", "python", "python3",
+  "eslint", "tsc", "prettier", "git",
+]);
+
+function validateCommand(command: string): void {
+  const dangerous = [
+    /\bcurl\b/, /\bwget\b/, /\brm\s+-rf\b/, /\brm\s.*\//, /\bmkfs\b/,
+    /\bdd\b/, /\bchmod\b/, /\bchown\b/, /\bsudo\b/, /\bsu\b/,
+    /\bkill\b/, /\bpkill\b/, /\bnc\b/, /\bncat\b/, /\bsocat\b/,
+    /\bssh\b/, /\bscp\b/, /\beval\b/, /\bexec\b/,
+    />\s*\//, // redirect to absolute path
+    /\/etc\//, /\/proc\//, /\/sys\//, /\/dev\//,
+    /\$\(/, /`[^`]*`/, // command substitution
+  ];
+
+  for (const pattern of dangerous) {
+    if (pattern.test(command)) {
+      throw new Error(`Blocked dangerous command pattern: ${pattern}`);
+    }
+  }
+
+  // Check first command in pipe chain
+  const firstCmd = command.trim().split(/[\s|;&]+/)[0];
+  if (firstCmd && !ALLOWED_COMMANDS.has(firstCmd)) {
+    throw new Error(
+      `Command '${firstCmd}' is not in the allowlist. Allowed: ${[...ALLOWED_COMMANDS].join(", ")}`
+    );
+  }
 }
 
 export function createBashTool(sandboxPath: string) {
@@ -21,17 +52,23 @@ export function createBashTool(sandboxPath: string) {
       "Execute a bash command in the repository sandbox.",
       `Working directory: ${sandboxPath}`,
       "Use for: running linters, searching code, listing files, etc.",
+      `Allowed commands: ${[...ALLOWED_COMMANDS].join(", ")}`,
     ].join("\n"),
     parameters: z.object({
       command: z.string().describe("The bash command to execute"),
     }),
     execute: async ({ command }) => {
       try {
+        validateCommand(command);
         const result = execSync(command, {
           cwd: sandboxPath,
           timeout: 30_000,
           maxBuffer: 5 * 1024 * 1024,
-          env: { ...process.env, PATH: process.env.PATH },
+          env: {
+            ...process.env,
+            HOME: sandboxPath,
+            LANG: "en_US.UTF-8",
+          } as NodeJS.ProcessEnv,
         });
         const stdout = result.toString("utf-8");
         return {
@@ -41,10 +78,10 @@ export function createBashTool(sandboxPath: string) {
           exitCode: 0,
         };
       } catch (err: unknown) {
-        const e = err as { stdout?: Buffer; stderr?: Buffer; status?: number };
+        const e = err as { stdout?: Buffer; stderr?: Buffer; status?: number; message?: string };
         return {
           stdout: e.stdout?.toString("utf-8")?.slice(0, 10_000) ?? "",
-          stderr: e.stderr?.toString("utf-8")?.slice(0, 10_000) ?? "",
+          stderr: e.stderr?.toString("utf-8")?.slice(0, 10_000) ?? e.message ?? "",
           exitCode: e.status ?? 1,
         };
       }
@@ -81,22 +118,3 @@ export function createReadFileTool(sandboxPath: string) {
   });
 }
 
-export function createWriteFileTool(sandboxPath: string) {
-  return tool({
-    description:
-      "Write content to a file in the repository. Use relative paths from the repo root.",
-    parameters: z.object({
-      path: z.string().describe("Relative file path from repo root"),
-      content: z.string().describe("The full file content to write"),
-    }),
-    execute: async ({ path: filePath, content }) => {
-      try {
-        const abs = ensureWithinSandbox(sandboxPath, filePath);
-        writeFileSync(abs, content, "utf-8");
-        return { success: true, path: filePath };
-      } catch (err) {
-        return { error: String(err) };
-      }
-    },
-  });
-}

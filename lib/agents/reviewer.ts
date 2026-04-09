@@ -2,7 +2,6 @@ import { generateText } from "ai";
 import type { LanguageModelV1 } from "ai";
 
 import type { AgentReview, ReviewFinding } from "@/lib/types";
-import { createBashTool, createReadFileTool } from "@/lib/sandbox/tools";
 import {
   buildReviewerSystemPrompt,
   agentOutputSchema,
@@ -41,14 +40,10 @@ export async function runReviewAgent(
         {
           role: "user",
           content:
-            "Review this PR thoroughly. Explore the codebase using the tools to understand context, then provide your findings.",
+            "Review this PR thoroughly based on the diff provided. Analyze for security vulnerabilities, bugs, performance issues, and code quality problems. Output your findings as JSON.",
         },
       ],
-      tools: {
-        bash: createBashTool(config.sandboxPath),
-        readFile: createReadFileTool(config.sandboxPath),
-      },
-      maxSteps: 15,
+      maxSteps: 1,
       temperature: config.temperature,
     });
 

@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,10 +18,22 @@ export function createSandbox(
 
   const cloneUrl = `https://x-access-token:${token}@github.com/${repoFullName}.git`;
 
-  execSync(
-    `git clone --depth 1 --single-branch --branch ${branch} ${cloneUrl} .`,
+  execFileSync(
+    "git",
+    ["clone", "--depth", "50", "--single-branch", "--branch", branch, cloneUrl, "."],
     { cwd: sandboxPath, stdio: "pipe", timeout: 120_000 }
   );
+
+  // Remove token from git config to prevent leaking via agent tools
+  try {
+    execFileSync(
+      "git",
+      ["remote", "set-url", "origin", `https://github.com/${repoFullName}.git`],
+      { cwd: sandboxPath, stdio: "pipe" }
+    );
+  } catch {
+    // best-effort
+  }
 
   return {
     id: sandboxPath,
@@ -78,23 +90,33 @@ function detectPackageManager(dir: string): PackageManagerInfo | null {
 
 export function getPRDiff(sandboxPath: string, baseBranch: string): string {
   try {
-    execSync(`git fetch origin ${baseBranch} --depth=1`, {
-      cwd: sandboxPath,
-      stdio: "pipe",
-      timeout: 60_000,
-    });
-    const diff = execSync(`git diff origin/${baseBranch}...HEAD`, {
-      cwd: sandboxPath,
-      timeout: 30_000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
+    execFileSync(
+      "git",
+      ["fetch", "origin", baseBranch, "--depth=50"],
+      { cwd: sandboxPath, stdio: "pipe", timeout: 60_000 }
+    );
+    const diff = execFileSync(
+      "git",
+      ["diff", `origin/${baseBranch}...HEAD`],
+      { cwd: sandboxPath, timeout: 30_000, maxBuffer: 10 * 1024 * 1024 }
+    );
     return diff.toString("utf-8");
   } catch {
-    return execSync("git diff HEAD~1", {
-      cwd: sandboxPath,
-      timeout: 30_000,
-      maxBuffer: 10 * 1024 * 1024,
-    }).toString("utf-8");
+    try {
+      // Fallback: two-dot diff
+      const diff = execFileSync(
+        "git",
+        ["diff", `origin/${baseBranch}`, "HEAD"],
+        { cwd: sandboxPath, timeout: 30_000, maxBuffer: 10 * 1024 * 1024 }
+      );
+      return diff.toString("utf-8");
+    } catch {
+      return execSync("git diff HEAD~1", {
+        cwd: sandboxPath,
+        timeout: 30_000,
+        maxBuffer: 10 * 1024 * 1024,
+      }).toString("utf-8");
+    }
   }
 }
 
@@ -103,8 +125,9 @@ export function getChangedFiles(
   baseBranch: string
 ): string[] {
   try {
-    const output = execSync(
-      `git diff --name-only origin/${baseBranch}...HEAD`,
+    const output = execFileSync(
+      "git",
+      ["diff", "--name-only", `origin/${baseBranch}...HEAD`],
       { cwd: sandboxPath, timeout: 15_000 }
     );
     return output
