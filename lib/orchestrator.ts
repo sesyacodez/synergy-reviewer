@@ -1,0 +1,150 @@
+import type { PRContext, AgentReview } from "@/lib/types";
+import {
+  createSandbox,
+  installDependencies,
+  getPRDiff,
+  getChangedFiles,
+} from "@/lib/sandbox/manager";
+import { getAgentSlots } from "@/lib/models/providers";
+import { runReviewAgent } from "@/lib/agents/reviewer";
+import { synthesizeReviews } from "@/lib/agents/synthesizer";
+import {
+  postInlineComments,
+  postSummaryComment,
+  addReaction,
+} from "@/lib/github/publisher";
+
+export async function runOrchestrator(
+  ctx: PRContext,
+  userInstruction: string
+): Promise<void> {
+  console.log(
+    `[orchestrator] starting review for ${ctx.repoFullName}#${ctx.prNumber}`
+  );
+
+  const sandbox = createSandbox(
+    ctx.repoFullName,
+    ctx.installationToken,
+    ctx.prBranch
+  );
+
+  try {
+    installDependencies(sandbox.path);
+
+    const diff = getPRDiff(sandbox.path, ctx.baseBranch);
+    const changedFiles = getChangedFiles(sandbox.path, ctx.baseBranch);
+
+    if (!diff.trim()) {
+      await postSummaryComment(
+        ctx,
+        "No changes detected in this PR.",
+        [],
+        {}
+      );
+      return;
+    }
+
+    const slots = getAgentSlots();
+
+    console.log(
+      `[orchestrator] launching ${slots.length} agents: ${slots.map((s) => s.id).join(", ")}`
+    );
+
+    // Run all agents in parallel -- each is fully independent
+    const agentPromises = slots.map((slot) =>
+      runReviewAgent({
+        agentId: slot.id,
+        model: slot.model,
+        temperature: slot.temperature,
+        sandboxPath: sandbox.path,
+        prNumber: ctx.prNumber,
+        repoFullName: ctx.repoFullName,
+        diff,
+        changedFiles,
+        userInstruction,
+      })
+    );
+
+    const reviews = await Promise.allSettled(agentPromises);
+
+    const completedReviews: AgentReview[] = reviews
+      .filter(
+        (r): r is PromiseFulfilledResult<AgentReview> =>
+          r.status === "fulfilled"
+      )
+      .map((r) => r.value);
+
+    const failedCount = reviews.filter(
+      (r) => r.status === "rejected"
+    ).length;
+
+    if (failedCount > 0) {
+      console.warn(
+        `[orchestrator] ${failedCount}/${reviews.length} agents failed`
+      );
+    }
+
+    if (completedReviews.length === 0) {
+      await postSummaryComment(
+        ctx,
+        "All review agents failed to complete. Please check your API key configuration and try again.",
+        [],
+        {}
+      );
+      return;
+    }
+
+    console.log(
+      `[orchestrator] ${completedReviews.length} agents completed, synthesizing...`
+    );
+
+    const synthesized = await synthesizeReviews(completedReviews);
+
+    // Post inline comments for high-confidence findings
+    const highConfidenceFindings = [
+      ...synthesized.consensusFindings,
+      ...synthesized.uniqueFindings.filter((f) => f.confidence >= 0.66),
+    ].filter((f) => f.line != null);
+
+    if (highConfidenceFindings.length > 0) {
+      await postInlineComments(ctx, highConfidenceFindings);
+    }
+
+    await postSummaryComment(
+      ctx,
+      synthesized.overallSummary,
+      [
+        ...synthesized.consensusFindings,
+        ...synthesized.uniqueFindings,
+        ...synthesized.disputedFindings,
+      ],
+      synthesized.agentSummaries,
+      {
+        consensusCount: synthesized.consensusFindings.length,
+        uniqueCount: synthesized.uniqueFindings.length,
+        disputedCount: synthesized.disputedFindings.length,
+        agentCount: completedReviews.length,
+        totalAgents: slots.length,
+        failedAgents: failedCount,
+      }
+    );
+
+    console.log(
+      `[orchestrator] review complete for ${ctx.repoFullName}#${ctx.prNumber}`
+    );
+  } catch (err) {
+    console.error("[orchestrator] fatal error:", err);
+    try {
+      await postSummaryComment(
+        ctx,
+        `An error occurred during the review:\n\`\`\`\n${String(err)}\n\`\`\``,
+        [],
+        {}
+      );
+    } catch {
+      // best-effort error reporting
+    }
+  } finally {
+    sandbox.cleanup();
+  }
+}
