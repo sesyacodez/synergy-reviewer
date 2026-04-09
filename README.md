@@ -1,6 +1,6 @@
 # Synergy Reviewer
 
-An ensemble AI code review bot. Multiple independent AI agents review your PRs in parallel, then a synthesizer cross-references their findings to eliminate bias and surface high-confidence issues.
+An ensemble AI code review bot. Multiple independent AI models analyze your PR diffs in parallel, then a synthesizer cross-references their findings to eliminate bias and surface high-confidence issues.
 
 ## Demo 
 
@@ -8,7 +8,7 @@ https://github.com/user-attachments/assets/9394b4b1-e18a-4b00-aa5b-38d2d54908fc
 
 ## Why Ensemble Review?
 
-A single AI reviewer can be biased — it may hallucinate issues, miss real problems, or fixate on style over substance. Synergy Reviewer runs **3 independent agents** (via [OpenRouter](https://openrouter.ai), using distinct models — defaults use free `:free` endpoints) against the same PR diff. When multiple models independently flag the same issue, confidence is high. When they disagree, the dispute is surfaced for human judgment.
+A single AI reviewer can be biased — it may hallucinate issues, miss real problems, or fixate on style over substance. Synergy Reviewer sends the same PR diff to **3 independent models** (via [OpenRouter](https://openrouter.ai) — defaults use free `:free` endpoints) for parallel analysis. When multiple models independently flag the same issue, confidence is high. When they disagree, the dispute is surfaced for human judgment.
 
 ## How It Works
 
@@ -20,11 +20,12 @@ GitHub PR Comment (@synergy-reviewer)
         │
         ▼
     Orchestrator
+    (clone repo, extract diff)
         │
     ┌───┼───┐
     │   │   │
     ▼   ▼   ▼
-  Model A  B  C         ← 3 independent reviews (OpenRouter)
+  Model A  B  C         ← 3 independent diff analyses (OpenRouter)
     │   │   │
     └───┼───┘
         │
@@ -39,19 +40,19 @@ GitHub PR Comment (@synergy-reviewer)
 ```
 
 1. Mention `@synergy-reviewer` in any PR comment (optionally with specific instructions)
-2. The bot clones the repo and launches 3 AI agents in parallel — each reviews the diff independently
-3. A synthesizer agent cross-references all findings and assigns confidence scores
+2. The bot clones the PR branch, extracts the diff, and sends it to 3 AI models in parallel — each analyzes the diff independently
+3. A synthesizer model cross-references all findings and assigns confidence scores
 4. High-confidence findings are posted as inline PR comments with suggestion blocks
-5. A summary comment shows consensus findings, unique findings, disputed findings, and per-agent comparisons
+5. A summary comment shows consensus findings, unique findings, disputed findings, and per-model comparisons
 
 ## Confidence Scoring
 
 | Score | Meaning |
 |-------|---------|
-| **1.0** | All 3 agents independently found this issue |
-| **0.8** | 2 of 3 agents agree |
-| **0.5** | Single agent, but synthesizer deems it valid |
-| **0.3** | Single agent, uncertain validity |
+| **1.0** | All 3 models independently found this issue |
+| **0.8** | 2 of 3 models agree |
+| **0.5** | Single model, but synthesizer deems it valid |
+| **0.3** | Single model, uncertain validity |
 | **< 0.3** | Likely false positive or bias artifact |
 
 Findings with confidence >= 0.66 are posted as inline comments. All findings appear in the summary.
@@ -141,8 +142,8 @@ synergy-reviewer/
       providers.ts            # Multi-model provider configuration
     orchestrator.ts           # Parallel execution coordinator
     sandbox/
-      manager.ts              # Temp dir, git clone, dependency install
-      tools.ts                # Agent tools (bash, readFile, writeFile)
+      manager.ts              # Temp dir, git clone, diff extraction
+      tools.ts                # Agent tools (bash, readFile — not yet wired up)
     github/
       app.ts                  # GitHub App auth
       webhooks.ts             # Webhook parsing + verification
