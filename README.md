@@ -2,6 +2,10 @@
 
 An ensemble AI code review bot. Multiple independent AI agents review your PRs in parallel, then a synthesizer cross-references their findings to eliminate bias and surface high-confidence issues.
 
+## Demo 
+
+https://github.com/user-attachments/assets/9394b4b1-e18a-4b00-aa5b-38d2d54908fc
+
 ## Why Ensemble Review?
 
 A single AI reviewer can be biased — it may hallucinate issues, miss real problems, or fixate on style over substance. Synergy Reviewer runs **3 independent agents** (via [OpenRouter](https://openrouter.ai), using distinct models — defaults use free `:free` endpoints) against the same PR diff. When multiple models independently flag the same issue, confidence is high. When they disagree, the dispute is surfaced for human judgment.
