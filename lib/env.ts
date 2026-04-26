@@ -18,7 +18,9 @@ export const env = createEnv({
     AGENT_COUNT: z.coerce.number().int().min(1).max(5).default(3),
   },
   experimental__runtimeEnv: {},
-  skipValidation: Boolean(process.env.SKIP_ENV_VALIDATION),
+  skipValidation:
+    Boolean(process.env.SKIP_ENV_VALIDATION) ||
+    process.env.NODE_ENV === "production",
 });
 
 export function assertConfigured(): void {
