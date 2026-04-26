@@ -1,17 +1,11 @@
 import type { PRContext, AgentReview } from "@/lib/types";
-import {
-  createSandbox,
-  installDependencies,
-  getPRDiff,
-  getChangedFiles,
-} from "@/lib/sandbox/manager";
+import { getInstallationOctokit } from "@/lib/github/app";
 import { getAgentSlots } from "@/lib/models/providers";
 import { runReviewAgent } from "@/lib/agents/reviewer";
 import { synthesizeReviews } from "@/lib/agents/synthesizer";
 import {
   postInlineComments,
   postSummaryComment,
-  addReaction,
 } from "@/lib/github/publisher";
 
 export async function runOrchestrator(
@@ -22,17 +16,30 @@ export async function runOrchestrator(
     `[orchestrator] starting review for ${ctx.repoFullName}#${ctx.prNumber}`
   );
 
-  const sandbox = createSandbox(
-    ctx.repoFullName,
-    ctx.installationToken,
-    ctx.prBranch
-  );
-
   try {
-    installDependencies(sandbox.path);
+    const octokit = await getInstallationOctokit();
 
-    const diff = getPRDiff(sandbox.path, ctx.baseBranch);
-    const changedFiles = getChangedFiles(sandbox.path, ctx.baseBranch);
+    const diffResp = await octokit.request(
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+      {
+        owner: ctx.owner,
+        repo: ctx.repo,
+        pull_number: ctx.prNumber,
+        mediaType: { format: "diff" },
+      }
+    );
+    const diff = diffResp.data as unknown as string;
+
+    const filesResp = await octokit.paginate(
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+      {
+        owner: ctx.owner,
+        repo: ctx.repo,
+        pull_number: ctx.prNumber,
+        per_page: 100,
+      }
+    );
+    const changedFiles = filesResp.map((f) => f.filename);
 
     if (!diff.trim()) {
       await postSummaryComment(
@@ -56,7 +63,7 @@ export async function runOrchestrator(
         agentId: slot.id,
         model: slot.model,
         temperature: slot.temperature,
-        sandboxPath: sandbox.path,
+        sandboxPath: "",
         prNumber: ctx.prNumber,
         repoFullName: ctx.repoFullName,
         diff,
@@ -148,7 +155,5 @@ export async function runOrchestrator(
     } catch {
       // best-effort error reporting
     }
-  } finally {
-    sandbox.cleanup();
   }
 }
